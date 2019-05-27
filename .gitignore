@@ -1,0 +1,14 @@
+# Compiled python.
+*.pyc
+
+# Setuptools distribution.
+/dist/
+
+# Python egg metadata.
+/*.egg-info
+
+# Pytest
+.pytest_cache
+
+# Sublime
+*.sublime*
