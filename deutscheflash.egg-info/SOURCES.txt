@@ -1,0 +1,5 @@
+README.md
+deutscheflash.egg-info/PKG-INFO
+deutscheflash.egg-info/SOURCES.txt
+deutscheflash.egg-info/dependency_links.txt
+deutscheflash.egg-info/top_level.txt
