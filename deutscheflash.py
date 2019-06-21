@@ -65,6 +65,30 @@ class WordList:
 
 def main():
     """Main body of the program."""
+    args = _parse_args()
+    path = pathlib.Path(args.words)
+
+    words = WordList()
+    words.load(path)
+    print(f"WordList {args.words} successfully loaded.")
+
+    if args.quiz_length:
+        print(f"Starting quiz with length {args.quiz_length}...")
+        _quiz(words, args.quiz_length)
+
+    elif args.add_words:
+        print("Entering word addition mode...")
+        _add_words(words)
+
+    elif args.load_words:
+        print(f"Importing word file {args.load_words}...")
+        _load_words(words, args.load_words)
+        print("Words successfully imported.")
+
+    _save_and_exit(words, path)
+
+
+def _parse_args():
     parser = argparse.ArgumentParser(
         description="Flashcard app for German grammatical genders."
     )
@@ -86,37 +110,51 @@ def main():
     parser.add_argument(
         "-w", "--words", default="main_list", help="The name of the WordList to use."
     )
-    args = parser.parse_args()
-    path = pathlib.Path(args.words)
+    return parser.parse_args()
 
-    words = WordList()
-    words.load(path)
-    print(f"WordList {args.words} successfully loaded.")
 
-    if args.quiz_length:
-        print(f"Starting quiz with length {args.quiz_length}...")
+def _quiz(words, quiz_length):
+    # TODO: implement quiz
+    pass
 
-    elif args.add_words:
-        print("Entering word addition mode...")
-        print("Type a word with gender eg `der Mann` or `quit` when finished.")
-        while True:
-            input_str = input()
-            if input_str == "quit":
-                print("Exiting word addition mode...")
+
+def _add_words(wordlist):
+    print("Type a word with gender eg `der Mann` or `quit` when finished.")
+    while True:
+        input_str = input()
+        if input_str == "quit":
+            print("Exiting word addition mode...")
+            break
+
+        try:
+            gender, word = input_str.split()
+            wordlist.add(gender, word)
+        except ValueError as e:
+            print(e)
+
+
+def _load_words(words, import_path):
+    # TODO: implement importing of lists of words
+    pass
+
+
+def _save_and_exit(wordlist, path):
+    while True:
+        try:
+            wordlist.save(path=path)
+            # TODO: Can WordList be made into a context manager?
+            print("WordList successfully saved, goodbye!")
+            break
+        except PermissionError:
+            print("PermissionError! File may be open in another window.")
+            retry = input("Try again? Y/N: ")
+            if retry in "Yy":
+                continue
+            elif retry in "Nn":
+                print("Exiting without saving changes.")
                 break
-
-            try:
-                gender, word = input_str.split()
-                words.add(gender, word)
-            except ValueError as e:
-                print(e)
-
-    elif args.load_words:
-        print(f"Importing word file {args.load_words}...")
-        print("Words successfully imported.")
-
-    words.save(path=path)  # TODO: Can Wordlist be made into a context manager?
-    print("WordList successfully saved, goodbye!")
+            else:
+                print("Input not recognised.")
 
 
 if __name__ == "__main__":
