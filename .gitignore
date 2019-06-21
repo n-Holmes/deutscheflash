@@ -10,5 +10,9 @@
 # Pytest
 .pytest_cache
 
-# Sublime
-*.sublime*
+# VS code
+.vscode
+
+# Stored word lists
+*.csv
+*.json
