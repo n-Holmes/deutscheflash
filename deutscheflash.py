@@ -7,6 +7,7 @@ import pandas as pd
 
 DEFAULT_GENDERS = ["der", "die", "das"]
 
+
 class WordList:
     """Data structure to store a pandas dataframe and some structural details."""
 
@@ -47,10 +48,16 @@ class WordList:
             f.write(json.dumps(self.structure))
 
     def add(self, gender, word):
+        gender = gender.lower()
+        word = word.capitalize()
+
         if gender not in self.structure["options"]:
             raise ValueError(
                 f"{gender} is not a valid gender for the current wordlist."
             )
+        if word in self.words.index:
+            raise ValueError(f"{word} is already included.")
+
         row = [self.structure["default guesses"]] * self.structure["column count"]
         row[0] = gender
         self.words.loc[word.capitalize()] = row
@@ -80,18 +87,36 @@ def main():
         "-w", "--words", default="main_list", help="The name of the WordList to use."
     )
     args = parser.parse_args()
+    path = pathlib.Path(args.words)
 
     words = WordList()
-    words.load(pathlib.Path(args.words))
+    words.load(path)
     print(f"WordList {args.words} successfully loaded.")
 
     if args.quiz_length:
         print(f"Starting quiz with length {args.quiz_length}...")
+
     elif args.add_words:
         print("Entering word addition mode...")
+        print("Type a word with gender eg `der Mann` or `quit` when finished.")
+        while True:
+            input_str = input()
+            if input_str == "quit":
+                print("Exiting word addition mode...")
+                break
+
+            try:
+                gender, word = input_str.split()
+                words.add(gender, word)
+            except ValueError as e:
+                print(e)
+
     elif args.load_words:
         print(f"Importing word file {args.load_words}...")
         print("Words successfully imported.")
+
+    words.save(path=path)  # TODO: Can Wordlist be made into a context manager?
+    print("WordList successfully saved, goodbye!")
 
 
 if __name__ == "__main__":
