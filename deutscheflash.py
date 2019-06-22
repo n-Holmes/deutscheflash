@@ -134,7 +134,7 @@ def main():
         if args.quiz_length == 0:
             correct, answered = _quiz_endless(words)
         elif args.quiz_length > 0:
-            correct, answered = _quiz(words, args.quiz_length)
+            correct, answered, _ = _quiz(words, args.quiz_length)
         else:
             raise ValueError(f"Invalid quiz length: {args.quiz_length}.")
 
