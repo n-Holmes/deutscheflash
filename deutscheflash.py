@@ -129,10 +129,16 @@ def main():
     words.load(path)
     print(f"WordList {args.words} successfully loaded.")
 
-    if args.quiz_length:
+    if args.quiz_length is not None:
         print(f"Starting quiz with length {args.quiz_length}...\n")
-        correct, answered = _quiz(words, args.quiz_length)
-        print(f"You successfully answered {correct} out of {answered} questions!")
+        if args.quiz_length == 0:
+            correct, answered = _quiz_endless(words)
+        elif args.quiz_length > 0:
+            correct, answered = _quiz(words, args.quiz_length)
+        else:
+            raise ValueError(f"Invalid quiz length: {args.quiz_length}.")
+
+        print(f"\nYou successfully answered {correct} out of {answered} questions!")
 
     elif args.add_words:
         print("Entering word addition mode...")
@@ -171,26 +177,38 @@ def _parse_args():
     return parser.parse_args()
 
 
-def _quiz(words, quiz_length):
+def _quiz(wordlist, quiz_length):
     """Runs a command line quiz of the specified length."""
     pd.options.mode.chained_assignment = None  # Suppresses SettingWithCopyWarning
 
     answered = 0
     correct = 0
-    for word, gender in words.get_words(quiz_length):
+    for word, gender in wordlist.get_words(quiz_length):
         guess = input(f"What is the gender of {word}? ").lower()
-        if guess == "quit":
+        if guess in ("quit", "exit"):
             break
 
         accurate = gender == guess
-        words.update_weight(word, accurate)
+        wordlist.update_weight(word, accurate)
         answered += 1
 
         if accurate:
             print("Correct!\n")
             correct += 1
         else:
-            print(f"Incorrect! The correct gender is {gender} {word}.")
+            print(f"Incorrect! The correct gender is {gender} {word}.\n")
+
+    return correct, answered, answered == quiz_length
+
+
+def _quiz_endless(wordlist):
+    correct, answered = 0, 0
+    finished = False
+    while not finished:
+        results = _quiz(wordlist, 20)
+        correct += results[0]
+        answered += results[1]
+        finished = not results[2]
 
     return correct, answered
 
@@ -200,7 +218,7 @@ def _add_words(wordlist):
     print("Type a word with gender eg `der Mann` or `quit` when finished.")
     while True:
         input_str = input()
-        if input_str == "quit":
+        if input_str in ("quit", "exit"):
             print("Exiting word addition mode...")
             break
 
