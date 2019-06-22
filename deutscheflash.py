@@ -5,7 +5,7 @@ import json
 import pathlib
 import pandas as pd
 
-DEFAULT_GENDERS = ["der", "die", "das"]
+DEFAULT_GENDERS = ("der", "die", "das")
 
 
 class WordList:
@@ -31,11 +31,11 @@ class WordList:
         self.structure = {
             "options": options,
             "default guesses": default_guess_count,
-            "index": "word",
-            "column count": len(options) + 1,
+            "index": "Word",
+            "column count": 3,
         }
 
-        columns = ["word", "gender"] + options
+        columns = ["Word", "Gender", "Correct", "Wrong"]
         datatypes = dict(zip(columns, (str,) + (int,) * self.structure["column count"]))
 
         self.words = pd.DataFrame(columns=columns).astype(datatypes)
@@ -58,9 +58,14 @@ class WordList:
         if word in self.words.index:
             raise ValueError(f"{word} is already included.")
 
-        row = [self.structure["default guesses"]] * self.structure["column count"]
-        row[0] = gender
-        self.words.loc[word.capitalize()] = row
+        n_options = len(self.structure["options"])
+        row = [
+            gender,
+            self.structure["default guesses"],
+            self.structure["default guesses"] * (n_options - 1),
+            (n_options - 1) / n_options
+        ]
+        self.words.loc[word] = row
 
 
 def main():
@@ -82,8 +87,8 @@ def main():
 
     elif args.load_words:
         print(f"Importing word file {args.load_words}...")
-        _load_words(words, args.load_words)
-        print("Words successfully imported.")
+        added, reps = _load_words(words, args.load_words)
+        print(f"{added} words successfully imported. {reps} duplicates skipped.")
 
     _save_and_exit(words, path)
 
@@ -134,8 +139,17 @@ def _add_words(wordlist):
 
 
 def _load_words(words, import_path):
-    # TODO: implement importing of lists of words
-    pass
+    new_words = pd.read_csv(import_path)
+    words_added = 0
+    repetitions = 0
+    for _, row in new_words.iterrows():
+        try:
+            words.add(row.Gender, row.Word)
+            words_added += 1
+        except ValueError:
+            repetitions += 1
+    
+    return words_added, repetitions
 
 
 def _save_and_exit(wordlist, path):
