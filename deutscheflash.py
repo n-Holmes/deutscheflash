@@ -5,18 +5,33 @@ import json
 import pathlib
 import pandas as pd
 
-DEFAULT_GENDERS = ("der", "die", "das")
+GERMAN_GENDERS = {
+    "masculine": "der",
+    "neuter": "das",
+    "plural": "die",
+    "femenine": "die",
+}
 
 
 class WordList:
-    """Data structure to store a pandas dataframe and some structural details."""
+    """Data structure to store a pandas dataframe and some structural details.
+    
+    Args:
+        path (pathlib.Path or None): The path (without suffix) to a wordlist.
+            If there is no current list at the path, will create a new list.
+            If no path is provided the WordList will not be fully initialized and will
+            require a subsequent call of `load` or `new`.
+    """
 
-    def __init__(self):
+    def __init__(self, path=None):
         self.words = None
         self.structure = {}
 
+        if path is not None:
+            self.load(path)
+
     def load(self, path: pathlib.Path):
-        """Load a the WordList with stored data."""
+        """Load stored data."""
         try:
             self.words = pd.read_csv(path.with_suffix(".csv"))
             with path.with_suffix(".json").open() as f:
@@ -26,11 +41,19 @@ class WordList:
         except FileNotFoundError:
             self.new()
 
-    def new(self, options=DEFAULT_GENDERS, default_guess_count: int = 2):
-        """Create a new wordlist."""
+    def new(self, genders: dict = GERMAN_GENDERS, score_inertia: int = 2):
+        """Create a new wordlist.
+        
+        Args:
+            genders (dict): A dictionary of genders and their standard forms.
+            score_inertia (int): Determines how resistant scores are to change.
+                Must be a positive integer.  Higher values will require more consecutive
+                correct answers to reduce the frequency of a specific word.
+        """
         self.structure = {
-            "options": options,
-            "default guesses": default_guess_count,
+            "genders": genders,
+            "aliases": self._get_aliases(genders),
+            "default guesses": score_inertia,
             "index": "Word",
             "column count": 3,
         }
@@ -47,27 +70,57 @@ class WordList:
         with path.with_suffix(".json").open(mode="w") as f:
             f.write(json.dumps(self.structure))
 
-    def add(self, gender, word):
-        gender = gender.lower()
+    def format_gender(self, gender_string: str):
+        """Attempts to find a matching gender for gender_string.
+        
+        Args:
+            gender_string (str): A gender for the word list or an alias of a gender.
+        
+        Returns:
+            The associated gender.
+        
+        Raises:
+            ValueError: `gender_string` does not match any gender or alias.
+        """
+        gender_string = gender_string.lower()
+        if gender_string in self.structure["genders"]:
+            return gender_string
+        if gender_string in self.structure["aliases"]:
+            return self.structure["aliases"][gender_string]
+
+        raise ValueError(f"Unknown gender: {gender_string}")
+
+    def add(self, gender: str, word: str):
+        """Add a new word to the list.
+        
+        Args:
+            gender (str): The gender of the word being added.
+            word (str): The word to add.
+        
+        Raises:
+            ValueError: `gender` does not match the current wordlist or the word is
+                already present in the list.
+        """
+        gender = self.format_gender(gender)
         word = word.capitalize()
 
-        if gender not in self.structure["options"]:
+        if gender not in self.structure["genders"]:
             raise ValueError(
                 f"{gender} is not a valid gender for the current wordlist."
             )
         if word in self.words.index:
             raise ValueError(f"{word} is already included.")
 
-        n_options = len(self.structure["options"])
+        n_genders = len(self.structure["genders"])
         row = [
             gender,
             self.structure["default guesses"],
-            self.structure["default guesses"] * (n_options - 1),
-            (n_options - 1) / n_options,
+            self.structure["default guesses"] * (n_genders - 1),
+            (n_genders - 1) / n_genders,
         ]
         self.words.loc[word] = row
 
-    def get_words(self, n, distribution="weighted"):
+    def get_words(self, n:int, distribution:str="weighted"):
         """Selects and returns a sample of words and their genders.
 
         Args:
@@ -104,20 +157,32 @@ class WordList:
         else:
             row.Wrong += 1
 
-        n_options = len(self.structure["options"])
+        n_genders = len(self.structure["genders"])
         total = row.Correct + row.Wrong
-        if not total % n_options:
+        if not total % n_genders:
             # Throw away some data as evenly as possible to allow for change over time
+            # Never throw away the last negative result to avoid question being lost.
             if row.Correct:
-                wrongs_to_throw = min(row.Wrong, n_options - 1)
+                wrongs_to_throw = min(row.Wrong - 1, n_genders - 1)
                 row.Wrong -= wrongs_to_throw
-                row.Correct -= n_options - wrongs_to_throw
+                row.Correct -= n_genders - wrongs_to_throw
             else:
-                row.wrong -= n_options
+                row.wrong -= n_genders
 
         row.Weight = row.Wrong / (row.Correct + row.Wrong)
 
         self.words.loc[word] = row
+
+    @staticmethod
+    def _get_aliases(genders: dict):
+        """Create a dictionary of aliases and the genders they refer to.
+        May have issues if multiple genders have the same article or first letter.
+        """
+        aliases = {}
+        for gender, article in genders.items():
+            aliases[gender[0]] = gender
+            aliases[article] = gender
+        return aliases
 
 
 def main():
@@ -125,15 +190,15 @@ def main():
     args = _parse_args()
     path = pathlib.Path(args.words)
 
-    words = WordList()
-    words.load(path)
+    words = WordList(path)
     print(f"WordList {args.words} successfully loaded.")
 
     if args.quiz_length is not None:
-        print(f"Starting quiz with length {args.quiz_length}...\n")
         if args.quiz_length == 0:
+            print("Starting quiz in endless mode. Answer `quit` to end the quiz.")
             correct, answered = _quiz_endless(words)
         elif args.quiz_length > 0:
+            print(f"Starting quiz with length {args.quiz_length}...\n")
             correct, answered, _ = _quiz(words, args.quiz_length)
         else:
             raise ValueError(f"Invalid quiz length: {args.quiz_length}.")
@@ -148,6 +213,12 @@ def main():
         print(f"Importing word file {args.load_words}...")
         added, reps = _load_words(words, args.load_words)
         print(f"{added} words successfully imported. {reps} duplicates skipped.")
+    
+    elif args.reset_scores:
+        print("Resetting scores")
+        words = WordList()
+        words.new()
+        _load_words(words, path.with_suffix('.csv'))
 
     _save_and_exit(words, path)
 
@@ -171,6 +242,12 @@ def _parse_args():
         "--load-words",
         help="Concatenates a prewritten list of words into the saved WordList.",
     )
+    mode.add_argument(
+        "-r",
+        "--reset-scores",
+        action="store_true",
+        help="Reset all scores in the specified word list."
+    )
     parser.add_argument(
         "-w", "--words", default="main_list", help="The name of the WordList to use."
     )
@@ -181,27 +258,33 @@ def _quiz(wordlist, quiz_length):
     """Runs a command line quiz of the specified length."""
     pd.options.mode.chained_assignment = None  # Suppresses SettingWithCopyWarning
 
-    answered = 0
-    correct = 0
+    answered, correct = 0, 0
     for word, gender in wordlist.get_words(quiz_length):
         guess = input(f"What is the gender of {word}? ").lower()
         if guess in ("quit", "exit"):
             break
 
-        accurate = gender == guess
-        wordlist.update_weight(word, accurate)
         answered += 1
 
+        try:
+            guess = wordlist.format_gender(guess)
+        except ValueError:
+            print("Unrecognised guess, skipping.\n")
+            continue
+        
+        accurate = gender == guess
+        wordlist.update_weight(word, accurate)
         if accurate:
             print("Correct!\n")
             correct += 1
         else:
-            print(f"Incorrect! The correct gender is {gender} {word}.\n")
+            print(f"Incorrect! The correct gender is {gender}.\n")
 
     return correct, answered, answered == quiz_length
 
 
 def _quiz_endless(wordlist):
+    """Runs quizzes in batches of 20 until quit or exit is answered."""
     correct, answered = 0, 0
     finished = False
     while not finished:
@@ -215,7 +298,7 @@ def _quiz_endless(wordlist):
 
 def _add_words(wordlist):
     """CLI for adding words individually to the wordlist."""
-    print("Type a word with gender eg `der Mann` or `quit` when finished.")
+    print("Type a word with gender eg `m Mann` or `quit` when finished.")
     while True:
         input_str = input()
         if input_str in ("quit", "exit"):
@@ -229,14 +312,14 @@ def _add_words(wordlist):
             print(e)
 
 
-def _load_words(word_list, import_path):
-    """Loads words from a csv file at import_path into `word_list`."""
+def _load_words(wordlist, import_path):
+    """Loads words from a csv file at import_path into `wordlist`."""
     new_words = pd.read_csv(import_path)
     words_added = 0
     repetitions = 0
     for _, row in new_words.iterrows():
         try:
-            word_list.add(row.Gender, row.Word)
+            wordlist.add(row.Gender, row.Word)
             words_added += 1
         except ValueError:
             repetitions += 1
