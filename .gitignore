@@ -14,5 +14,4 @@
 .vscode
 
 # Stored word lists
-*.csv
-*.json
+lists/*

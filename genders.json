@@ -1,0 +1,4 @@
+{
+    "german": {"masculine": "der", "neuter": "das", "plural": "die", "femenine": "die"},
+    "french": {"masculine": "le", "femenine": "la", "plural": "les"}
+}

@@ -6,11 +6,6 @@ import pathlib
 
 import pandas as pd
 
-GENDERS = {
-    "german": {"masculine": "der", "neuter": "das", "plural": "die", "femenine": "die"},
-    "french": {"masculine": "le", "femenine": "la", "plural": "les"},
-}
-
 
 class WordList:
     """Data structure to store a pandas dataframe and some structural details.
@@ -37,8 +32,10 @@ class WordList:
                 self.structure = json.loads(f.read())
             self.words.set_index(self.structure["index"], inplace=True)
 
-        except FileNotFoundError:
-            self.new()
+        except FileNotFoundError as exception:
+            raise FileNotFoundError(
+                "No word list found with the specified name."
+            ) from exception
 
     def new(self, language: str = "german", score_inertia: int = 2):
         """Create a new wordlist.
@@ -49,10 +46,11 @@ class WordList:
                 Must be a positive integer.  Higher values will require more consecutive
                 correct answers to reduce the frequency of a specific word.
         """
+        gender_options = get_languages()
         try:
-            genders = GENDERS[language]
-        except KeyError as e:
-            raise KeyError(f"Unknown language: {language}") from e
+            genders = gender_options[language]
+        except KeyError as exception:
+            raise ValueError(f"Unknown language: {language}") from exception
 
         columns = ["Word", "Gender", "Correct", "Wrong", "Weight"]
 
@@ -188,13 +186,58 @@ class WordList:
         return aliases
 
 
-def main():
-    """Main body of the program."""
-    args = _parse_args()
-    path = pathlib.Path(args.words)
+def force_console_input(
+    query: str,
+    allowable,
+    onfail: str = "Input not recognised, please try again.\n",
+    case_sensitive=False,
+):
+    """Get an input from the user matching some string in allowable.
 
-    words = WordList(path)
-    print(f"WordList {args.words} successfully loaded.")
+    Args:
+        query (str): The query to issue the user with.
+        allowable (str or container): The options which the user is allowed to submit.
+            If this is a string, acceptable answers will be substrings.
+            For containers acceptable answers will be elements of the container.
+    
+    Returns:
+        The correct input returned
+    
+    Raises:
+        IOError: A request to quit was submitted.
+    """
+    if not allowable:
+        raise ValueError("At least one entry must be allowable.")
+
+    submission = input(query)
+    while True:
+        if not case_sensitive:
+            submission = submission.lower()
+
+        if submission in ("quit", "exit"):
+            raise IOError("Exit command received.")
+        if submission in allowable:
+            return submission
+
+        submission = input(onfail)
+
+
+def get_languages():
+    """Gets the language: genders dictionary."""
+    with open("genders.json", "r") as f:
+        return json.loads(f.read())
+
+
+def main():
+    """Orchestration function for the CLI."""
+    args = _parse_args()
+    path = pathlib.Path("lists", args.words)
+
+    try:
+        words = _load_words(path)
+    except IOError:
+        print("Exiting.")
+        return
 
     if args.quiz_length is not None:
         if args.quiz_length == 0:
@@ -214,14 +257,14 @@ def main():
 
     elif args.load_words:
         print(f"Importing word file {args.load_words}...")
-        added, reps = _load_words(words, args.load_words)
+        added, reps = _import_words(words, args.load_words)
         print(f"{added} words successfully imported. {reps} duplicates skipped.")
 
     elif args.reset_scores:
         print("Resetting scores")
         words = WordList()
         words.new()
-        _load_words(words, path.with_suffix(".csv"))
+        _import_words(words, path.with_suffix(".csv"))
 
     _save_and_exit(words, path)
 
@@ -255,6 +298,33 @@ def _parse_args():
         "-w", "--words", default="main_list", help="The name of the WordList to use."
     )
     return parser.parse_args()
+
+
+def _load_words(path):
+    """Encapsulates the loading/newfile creation logic."""
+    try:
+        words = WordList(path)
+        print("Words successfully loaded.")
+
+    except FileNotFoundError:
+        print(f"No word list found with given name.")
+        newfile = force_console_input(
+            "Would you like to create a new wordlist with the specified name? Y/N: ",
+            options=["y", "yes", "n", "no"],
+        )
+        if newfile[0] == "y":
+            words = WordList()
+            language = force_console_input(
+                query="Which language should be used?\n",
+                onfail="Language not recognised, please try again or check genders.json\n",
+                options=get_languages(),
+            )
+            words.new(language=language)
+            print(f"New WordList for language {language} successfully created.")
+        else:
+            raise IOError
+
+    return words
 
 
 def _quiz(wordlist, quiz_length):
@@ -315,7 +385,7 @@ def _add_words(wordlist):
             print(e)
 
 
-def _load_words(wordlist, import_path):
+def _import_words(wordlist, import_path):
     """Loads words from a csv file at import_path into `wordlist`."""
     new_words = pd.read_csv(import_path)
     words_added = 0
@@ -339,14 +409,11 @@ def _save_and_exit(wordlist, path):
             break
         except PermissionError:
             print("PermissionError! File may be open in another window.")
-            retry = input("Try again? Y/N: ")
-            if retry in "Yy":
+            retry = force_console_input("Try again? Y/N: ", ["y", "yes", "n", "no"])
+            if retry[0] == "y":
                 continue
-            elif retry in "Nn":
-                print("Exiting without saving changes.")
-                break
             else:
-                print("Input not recognised.")
+                print("Exiting without saving changes.")
 
 
 if __name__ == "__main__":
