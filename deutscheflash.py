@@ -3,13 +3,12 @@
 import argparse
 import json
 import pathlib
+
 import pandas as pd
 
-GERMAN_GENDERS = {
-    "masculine": "der",
-    "neuter": "das",
-    "plural": "die",
-    "femenine": "die",
+GENDERS = {
+    "german": {"masculine": "der", "neuter": "das", "plural": "die", "femenine": "die"},
+    "french": {"masculine": "le", "femenine": "la", "plural": "les"},
 }
 
 
@@ -41,27 +40,31 @@ class WordList:
         except FileNotFoundError:
             self.new()
 
-    def new(self, genders: dict = GERMAN_GENDERS, score_inertia: int = 2):
+    def new(self, language: str = "german", score_inertia: int = 2):
         """Create a new wordlist.
         
         Args:
-            genders (dict): A dictionary of genders and their standard forms.
+            language (str): The name of a language in the GENDERS dictionary.
             score_inertia (int): Determines how resistant scores are to change.
                 Must be a positive integer.  Higher values will require more consecutive
                 correct answers to reduce the frequency of a specific word.
         """
+        try:
+            genders = GENDERS[language]
+        except KeyError as e:
+            raise KeyError(f"Unknown language: {language}") from e
+
+        columns = ["Word", "Gender", "Correct", "Wrong", "Weight"]
+
         self.structure = {
+            "language": language,
             "genders": genders,
             "aliases": self._get_aliases(genders),
             "default guesses": score_inertia,
             "index": "Word",
             "column count": 3,
         }
-
-        columns = ["Word", "Gender", "Correct", "Wrong", "Weight"]
-        datatypes = dict(zip(columns, (str,) + (int,) * self.structure["column count"]))
-
-        self.words = pd.DataFrame(columns=columns).astype(datatypes)
+        self.words = pd.DataFrame(columns=columns)
         self.words.set_index(self.structure["index"], inplace=True)
 
     def save(self, path: pathlib.Path):
@@ -120,7 +123,7 @@ class WordList:
         ]
         self.words.loc[word] = row
 
-    def get_words(self, n:int, distribution:str="weighted"):
+    def get_words(self, n: int, distribution: str = "weighted"):
         """Selects and returns a sample of words and their genders.
 
         Args:
@@ -213,12 +216,12 @@ def main():
         print(f"Importing word file {args.load_words}...")
         added, reps = _load_words(words, args.load_words)
         print(f"{added} words successfully imported. {reps} duplicates skipped.")
-    
+
     elif args.reset_scores:
         print("Resetting scores")
         words = WordList()
         words.new()
-        _load_words(words, path.with_suffix('.csv'))
+        _load_words(words, path.with_suffix(".csv"))
 
     _save_and_exit(words, path)
 
@@ -246,7 +249,7 @@ def _parse_args():
         "-r",
         "--reset-scores",
         action="store_true",
-        help="Reset all scores in the specified word list."
+        help="Reset all scores in the specified word list.",
     )
     parser.add_argument(
         "-w", "--words", default="main_list", help="The name of the WordList to use."
@@ -271,7 +274,7 @@ def _quiz(wordlist, quiz_length):
         except ValueError:
             print("Unrecognised guess, skipping.\n")
             continue
-        
+
         accurate = gender == guess
         wordlist.update_weight(word, accurate)
         if accurate:
